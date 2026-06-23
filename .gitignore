@@ -1,0 +1,22 @@
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+
+# Build output
+/bin/
+/dist/
+*.exe
+
+# Uploads (local fallback storage)
+uploads/
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Test & temp
+*.log
+tmp/
