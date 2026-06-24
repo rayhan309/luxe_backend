@@ -10,21 +10,32 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/luxe/backend/internal/pkg/imagekit"
 	"github.com/luxe/backend/internal/pkg/response"
+	"github.com/rs/zerolog/log"
 )
 
 type UploadHandler struct {
 	uploadDir   string
 	maxFileSize int64
+	imagekit    *imagekit.Client
 }
 
-func NewUploadHandler(uploadDir string, maxFileSize int64) *UploadHandler {
-	// Ensure upload directory exists
+func NewUploadHandler(uploadDir string, maxFileSize int64, ik *imagekit.Client) *UploadHandler {
 	_ = os.MkdirAll(uploadDir, 0755)
-	return &UploadHandler{uploadDir: uploadDir, maxFileSize: maxFileSize}
+	return &UploadHandler{uploadDir: uploadDir, maxFileSize: maxFileSize, imagekit: ik}
 }
 
-// Upload handles multipart file uploads
+func allowedImageExt(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".jpg", ".jpeg", ".png", ".webp", ".gif":
+		return true
+	default:
+		return false
+	}
+}
+
+// Upload handles multipart file uploads (ImageKit when configured, else local disk).
 func (h *UploadHandler) Upload(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.maxFileSize)
 
@@ -35,15 +46,30 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// Validate extension
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	allowedExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true}
-	if !allowedExts[ext] {
+	if !allowedImageExt(ext) {
 		response.BadRequest(c, "only image files (jpg, jpeg, png, webp, gif) are allowed")
 		return
 	}
 
-	// Generate unique filename
+	if h.imagekit != nil && h.imagekit.Enabled() {
+		result, err := h.imagekit.Upload(file, header.Filename)
+		if err != nil {
+			log.Error().Err(err).Msg("imagekit upload failed")
+			response.InternalError(c, "imagekit upload failed: "+err.Error())
+			return
+		}
+		log.Info().Str("url", result.URL).Msg("image uploaded to imagekit")
+		response.Success(c, "file uploaded to imagekit", gin.H{
+			"url":      result.URL,
+			"filename": result.Name,
+			"size":     result.Size,
+			"file_id":  result.FileID,
+			"provider": "imagekit",
+		})
+		return
+	}
+
 	filename := fmt.Sprintf("%s-%d%s", uuid.NewString(), time.Now().UnixNano(), ext)
 	year := time.Now().Format("2006")
 	month := time.Now().Format("01")
@@ -56,16 +82,16 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	// Return public URL (relative path)
 	publicURL := fmt.Sprintf("/uploads/%s/%s/%s", year, month, filename)
 	response.Success(c, "file uploaded", gin.H{
 		"url":      publicURL,
 		"filename": filename,
 		"size":     header.Size,
+		"provider": "local",
 	})
 }
 
-// UploadMultiple handles multiple file uploads
+// UploadMultiple handles multiple file uploads.
 func (h *UploadHandler) UploadMultiple(c *gin.Context) {
 	form, err := c.MultipartForm()
 	if err != nil {
@@ -87,8 +113,21 @@ func (h *UploadHandler) UploadMultiple(c *gin.Context) {
 
 	for _, fileHeader := range files {
 		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
-		allowedExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true}
-		if !allowedExts[ext] {
+		if !allowedImageExt(ext) {
+			continue
+		}
+
+		if h.imagekit != nil && h.imagekit.Enabled() {
+			src, err := fileHeader.Open()
+			if err != nil {
+				continue
+			}
+			result, err := h.imagekit.Upload(src, fileHeader.Filename)
+			src.Close()
+			if err != nil {
+				continue
+			}
+			urls = append(urls, result.URL)
 			continue
 		}
 
@@ -98,6 +137,11 @@ func (h *UploadHandler) UploadMultiple(c *gin.Context) {
 			continue
 		}
 		urls = append(urls, fmt.Sprintf("/uploads/%s/%s/%s", year, month, filename))
+	}
+
+	if len(urls) == 0 {
+		response.BadRequest(c, "no files uploaded")
+		return
 	}
 
 	response.Success(c, "files uploaded", gin.H{"urls": urls})

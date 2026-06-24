@@ -113,6 +113,10 @@ func (uc *ProductUseCase) GetNewArrivals(ctx context.Context, limit int) ([]*dom
 }
 
 // GetRelated returns related products
-func (uc *ProductUseCase) GetRelated(ctx context.Context, categoryID, excludeID string, limit int) ([]*domain.Product, error) {
+func (uc *ProductUseCase) GetRelated(ctx context.Context, categoryID, excludeSlug string, limit int) ([]*domain.Product, error) {
+	excludeID := excludeSlug
+	if product, err := uc.productRepo.FindBySlug(ctx, excludeSlug); err == nil {
+		excludeID = product.ID.Hex()
+	}
 	return uc.productRepo.GetRelated(ctx, categoryID, excludeID, limit)
 }

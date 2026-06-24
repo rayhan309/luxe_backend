@@ -14,6 +14,7 @@ type Config struct {
 	MongoDB  MongoDBConfig
 	JWT      JWTConfig
 	App      AppConfig
+	ImageKit ImageKitConfig
 }
 
 type ServerConfig struct {
@@ -38,6 +39,13 @@ type AppConfig struct {
 	FrontendURL string
 	UploadDir   string
 	MaxFileSize int64 // bytes
+}
+
+type ImageKitConfig struct {
+	PublicKey   string
+	PrivateKey  string
+	URLEndpoint string
+	Folder      string
 }
 
 // Load reads .env file and returns populated Config
@@ -71,6 +79,12 @@ func Load() *Config {
 			FrontendURL: getEnv("FRONTEND_URL", "http://localhost:3000"),
 			UploadDir:   getEnv("UPLOAD_DIR", "./uploads"),
 			MaxFileSize: maxFileSize,
+		},
+		ImageKit: ImageKitConfig{
+			PublicKey:   getEnv("IMAGEKIT_PUBLIC_KEY", getEnv("NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY", "")),
+			PrivateKey:  getEnv("IMAGEKIT_PRIVATE_KEY", ""),
+			URLEndpoint: getEnv("IMAGEKIT_URL_ENDPOINT", getEnv("NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT", "")),
+			Folder:      getEnv("IMAGEKIT_FOLDER", "/luxe"),
 		},
 	}
 }

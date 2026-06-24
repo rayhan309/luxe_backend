@@ -2,8 +2,10 @@ package usecase
 
 import (
 	"context"
+	"errors"
 
 	"github.com/luxe/backend/internal/domain"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type CategoryUseCase struct {
@@ -23,6 +25,13 @@ func (uc *CategoryUseCase) Create(ctx context.Context, input domain.CreateCatego
 		SortOrder:   input.SortOrder,
 		MetaTitle:   input.MetaTitle,
 		MetaDesc:    input.MetaDesc,
+	}
+	if input.ParentID != "" {
+		parentOID, err := primitive.ObjectIDFromHex(input.ParentID)
+		if err != nil {
+			return nil, errors.New("invalid parent category id")
+		}
+		cat.ParentID = &parentOID
 	}
 	return uc.categoryRepo.Create(ctx, cat)
 }

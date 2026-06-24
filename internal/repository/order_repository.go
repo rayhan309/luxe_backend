@@ -140,6 +140,21 @@ func (r *orderRepository) GetStats(ctx context.Context) (*domain.OrderStats, err
 	todayOrders, _ := r.col.CountDocuments(ctx, bson.M{"created_at": bson.M{"$gte": today}})
 	stats.TodayOrders = todayOrders
 
+	todayRevenuePipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{
+			"created_at":     bson.M{"$gte": today},
+			"payment_status": domain.PaymentPaid,
+		}}},
+		{{Key: "$group", Value: bson.M{"_id": nil, "total": bson.M{"$sum": "$total"}}}},
+	}
+	if cursor, err := r.col.Aggregate(ctx, todayRevenuePipeline); err == nil {
+		defer cursor.Close(ctx)
+		var result []struct{ Total float64 `bson:"total"` }
+		if cursor.All(ctx, &result) == nil && len(result) > 0 {
+			stats.TodayRevenue = result[0].Total
+		}
+	}
+
 	// Revenue aggregation
 	pipeline := mongo.Pipeline{
 		{{Key: "$match", Value: bson.M{"payment_status": domain.PaymentPaid}}},

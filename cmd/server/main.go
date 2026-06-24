@@ -34,6 +34,7 @@ import (
 
 	"github.com/luxe/backend/config"
 	deliveryHTTP "github.com/luxe/backend/internal/delivery/http"
+	"github.com/luxe/backend/internal/pkg/imagekit"
 	"github.com/luxe/backend/internal/pkg/jwt"
 	"github.com/luxe/backend/internal/repository"
 	"github.com/luxe/backend/internal/usecase"
@@ -91,6 +92,16 @@ func main() {
 	bannerUC := usecase.NewBannerUseCase(bannerRepo)
 	userUC := usecase.NewUserUseCase(userRepo)
 
+	ikClient := imagekit.New(imagekit.Config{
+		PublicKey:   cfg.ImageKit.PublicKey,
+		PrivateKey:  cfg.ImageKit.PrivateKey,
+		URLEndpoint: cfg.ImageKit.URLEndpoint,
+		Folder:      cfg.ImageKit.Folder,
+	})
+	if ikClient != nil && ikClient.Enabled() {
+		log.Info().Str("folder", cfg.ImageKit.Folder).Msg("ImageKit uploads enabled")
+	}
+
 	// Initialize handlers
 	deps := &deliveryHTTP.Dependencies{
 		Auth:     deliveryHTTP.NewAuthHandler(authUC),
@@ -103,7 +114,7 @@ func main() {
 		Banner:   deliveryHTTP.NewBannerHandler(bannerUC),
 		User:     deliveryHTTP.NewUserHandler(userUC),
 		Admin:    deliveryHTTP.NewAdminHandler(orderUC, userUC),
-		Upload:   deliveryHTTP.NewUploadHandler(cfg.App.UploadDir, cfg.App.MaxFileSize),
+		Upload:   deliveryHTTP.NewUploadHandler(cfg.App.UploadDir, cfg.App.MaxFileSize, ikClient),
 		JWT:      jwtManager,
 	}
 
